@@ -1,0 +1,53 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String   @id @default(uuid())
+  username            String   @unique
+  email               String   @unique
+  password            String
+  createdSurveys      Survey[]
+  participatedSurveys Survey[] @relation("ParicipatedOn")
+  optionsVoted        Option[]
+}
+
+model Survey {
+  id                String     @id @default(uuid())
+  title             String
+  description       String?
+  totalParticipants Int        @default(0)
+  authorId          String
+  author            User       @relation(fields: [authorId], references: [id])
+  participants      User[]     @relation("ParicipatedOn")
+  questions         Question[]
+  requireSignIn      Boolean    @default(false)
+}
+
+model Question {
+  id       String   @id @default(uuid())
+  text     String
+  surveyId String
+  survey   Survey   @relation(fields: [surveyId], references: [id])
+  options  Option[]
+}
+
+model Option {
+  id           String   @id @default(uuid())
+  label        String
+  totalVotes   Int      @default(0)
+  questionId   String
+  question     Question @relation(fields: [questionId], references: [id])
+  votedByUsers User[]
+}
