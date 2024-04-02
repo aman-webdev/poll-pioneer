@@ -1,6 +1,8 @@
 import {sign,verify} from "jsonwebtoken"
 import { config } from "dotenv"
+import bcrpyt from "bcrypt"
 
+config()
 const SECRET = process.env.JWT_SECRET || 'Secret'
 
 const TOKEN_EXPIRY = '1hr'
@@ -17,3 +19,9 @@ export const verifyToken = (token:string) => {
         throw new Error(e)
     }
 }
+
+export const hashString = async (str:string) => {
+    const hash = await bcrpyt.hash(str,10)
+    return hash
+}
+
