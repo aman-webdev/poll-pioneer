@@ -33,6 +33,7 @@ model Survey {
   participants      User[]     @relation("ParicipatedOn")
   questions         Question[]
   isAnonymous      Boolean    @default(false)
+  endTime DateTime?
 }
 
 model Question {
