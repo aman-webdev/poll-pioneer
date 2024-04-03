@@ -32,7 +32,7 @@ model Survey {
   author            User       @relation(fields: [authorId], references: [id])
   participants      User[]     @relation("ParicipatedOn")
   questions         Question[]
-  requireSignIn      Boolean    @default(false)
+  isAnonymous      Boolean    @default(false)
 }
 
 model Question {
