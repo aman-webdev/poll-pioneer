@@ -10,9 +10,7 @@ const authMiddleware = async(req:Request,res:Response,next:NextFunction) => {
     try{
         const authToken = req.headers['authorization']
         const token = authToken?.split("Bearer ").pop()
-        if(!token)
-        return res.status(401).json({message:"Unauthorized"})
-
+        if(!token) return next()
         const {userId} = verifyToken(token)
         if(!userId) return res.status(401).json({message:"Unauthorized"})
         req.userId = userId

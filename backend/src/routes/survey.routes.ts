@@ -6,17 +6,27 @@ const surveyRoute =  Router();
 
 const createSurvey = async(req:Request,res:Response) => {
     try{
-        const {title,description,questions,authorId,isAnonymous} = req.body
+        const {title,description,questions,isAnonymous} = req.body
+        const {userId} = req
+        if(!userId) return res.sendStatus(401)
         if(!title || !questions) return res.status(400).json({message:"Required parameters not found"})
     
         const result = await client.survey.create({
             data:{
                 title,
                 description,
-                questions,
-                authorId,
+                questions:{
+                    create: questions.map((ques:any)=>{
+                      return  { ...ques, options:{
+                        create : ques.options
+                      }}
+
+                    })
+                },
+                authorId:userId,
                 isAnonymous
-            }
+            },
+        
         })
     
         return res.status(201).json({message:"Survey created successfully",data:result})
@@ -67,7 +77,7 @@ include:{
 
 } 
 
-const getUserSurveys = async(req:Request,res:Response) => {
+const getSurveysForUser = async(req:Request,res:Response) => {
     const {authorId} = req.params
     const {userId} = req
 
@@ -76,15 +86,20 @@ const getUserSurveys = async(req:Request,res:Response) => {
     } = {
         authorSurveys:[],participatedUserSurveys:[],createdUserSurveys:[]
     }
-
- 
+    const anonymousSurveys = await client.survey.findMany({
+        where:{
+            isAnonymous:true
+        }
+    })
 
     const authorSurveys = await client.survey.findMany({
         where:{
-            authorId,
+            ...(authorId && {authorId}),
             ...(!userId && {isAnonymous:true})
         }
     })
+
+    if(!userId) return res.json({data:{authorSurveys,anonymousSurveys}})
 
     const participatedUserSurveys = await client.survey.findMany({
         where:{
@@ -97,26 +112,29 @@ const getUserSurveys = async(req:Request,res:Response) => {
       
     })
 
+   
+
     const createdSurveys = await client.survey.findMany({
         where:{
             authorId:userId
         }
     })
 
-    data['authorSurveys'] = authorSurveys
     data['participatedUserSurveys'] = participatedUserSurveys || []
     data['createdUserSurveys'] = createdSurveys || []
 
-    return res.json({data})
+    return res.json({data:{
+        ...data, anonymousSurveys
+    }})
    
 }
 
 const voteInASurvey = async(req:Request, res:Response) => {
-    console.log("inside vote func")
+    console.log("inside vote func",req.userId)
     try{
-        const {questionId,optionId,userId} = req.body
+        const {questionId,optionId} = req.body
         if(!questionId || !optionId) return res.status(400).json({message:"questionId and optionId are required"})
-        console.log("first")
+        const {userId} = req
         
         const survey = await client.question.findUnique({
             where:{
@@ -124,17 +142,22 @@ const voteInASurvey = async(req:Request, res:Response) => {
             },
             select : {
                 survey : {
-                    select:{
-                        isAnonymous:true,
-                        id:true
+                   
+                    include:{
+                        participants:{
+                                select:{
+                                    id:true
+                                }
+                        }
                     }
                 }
             }
         })
 
-        console.log(survey,'found')
+        console.log(survey)
 
         // const {userId} = req
+        console.log(!userId && !survey?.survey?.isAnonymous)
 
         if(!userId && !survey?.survey?.isAnonymous) return res.status(401).json({message:"Not authorized"})
 
@@ -166,9 +189,11 @@ const voteInASurvey = async(req:Request, res:Response) => {
             }
         })
 
+        const queries:any = [] 
+
         if(prevOptions && prevOptions.length) {
-            prevOptions.forEach(async (op) =>{
-                await client.option.update({
+            prevOptions.forEach( (op) =>{
+                queries.push(client.option.update({
                     where:{
                         id:op.id
                     },
@@ -177,12 +202,15 @@ const voteInASurvey = async(req:Request, res:Response) => {
                             disconnect : {
                                 id: userId
                             }
+                        },
+                        totalVotes:{
+                            decrement:1
                         }
                     }
-                })
+                }))
 
 
-            await client.user.update({
+             queries.push(client.user.update({
                 where:{
                     id: userId
                 },
@@ -193,13 +221,13 @@ const voteInASurvey = async(req:Request, res:Response) => {
                         }
                     }
                 }
-            })
+            }))
 
             })
 
 
         }
-        await client.option.update({
+         queries.push(client.option.update({
             where:{
                 id:optionId
             },
@@ -209,24 +237,93 @@ const voteInASurvey = async(req:Request, res:Response) => {
                 },
                 votedByUsers:{
                     connect : {
-                        id:userId
-                    }
+                        id:userId,
+                        
+                    },
+                    
                 }
             }
-        })
+        }))
+
+       console.log("prev op",prevOptions)
+        if(survey && !prevOptions?.length) {
+            console.log("inside if here")
+            queries.push(client.user.update({
+                where:{
+                    id:userId,
+    
+                },
+                data:{
+                    participatedSurveys:{
+                        connect:{
+                            id:survey?.survey.id,
+                            
+                        }
+                        
+                    }
+                },
+              
+            }))
+    
+           
+            queries.push(client.survey.update({
+                where:{
+                    id:survey.survey.id,
+                },
+                data:{
+                    totalParticipants:{
+                        increment:1
+                    }
+                }
+            }))
+        }
+      
+
+        
+
+       
+
+        await client.$transaction(queries)
+
+
 
         return res.json({message:"voted successfully"})
 
     }catch(err){
-        console.log("inside error here")
+        console.log("inside error here",err)
 
     }
   
 
 }
 
-surveyRoute.post("/create-survey",createSurvey)
+const deleteSurvey = async(req:Request, res:Response) => {
+    try{
+        const {surveyId} = req.body
+        const {userId} = req
+        if(!userId) return res.sendStatus(401)
+
+        await client.survey.delete({
+            where:{
+                authorId:userId,
+                id:surveyId
+            },
+           
+            
+
+        })
+
+        return res.json({message:"Deleted Successfully"})
+    }
+    catch(err){
+        console.log("errrrr",err)
+    }
+}
+
+surveyRoute.post("/",createSurvey)
+surveyRoute.get("/by-user",getSurveysForUser)
 surveyRoute.get("/:surveyId",getSurvey)
 surveyRoute.post("/vote",voteInASurvey)
+surveyRoute.delete("/",deleteSurvey)
 
 export default surveyRoute

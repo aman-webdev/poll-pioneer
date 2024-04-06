@@ -29,7 +29,7 @@ model Survey {
   description       String?
   totalParticipants Int        @default(0)
   authorId          String
-  author            User       @relation(fields: [authorId], references: [id])
+  author            User       @relation(fields: [authorId], references: [id],onDelete: Cascade)
   participants      User[]     @relation("ParicipatedOn")
   questions         Question[]
   isAnonymous      Boolean    @default(false)
@@ -40,7 +40,7 @@ model Question {
   id       String   @id @default(uuid())
   text     String
   surveyId String
-  survey   Survey   @relation(fields: [surveyId], references: [id])
+  survey   Survey   @relation(fields: [surveyId], references: [id],onDelete: Cascade)
   options  Option[]
 }
 
@@ -49,6 +49,6 @@ model Option {
   label        String
   totalVotes   Int      @default(0)
   questionId   String
-  question     Question @relation(fields: [questionId], references: [id])
+  question     Question @relation(fields: [questionId], references: [id],onDelete: Cascade)
   votedByUsers User[]
 }
